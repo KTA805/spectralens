@@ -15,7 +15,7 @@
 
 > Drop any WAV / MP3 / OGG file, or click **"Run demo with synthetic signal"** to try instantly — no sign-up, no server, no data leaves your browser.
 >
-> WAV / MP3 / OGG ファイルをドロップするか、**「Run demo with synthetic signal」**をクリックするだけで即試せます。サインアップ不要・サーバー不要・音声データは外部送信されません。
+> WAV / MP3 / OGG ファイルをドロップするか、 **「Run demo with synthetic signal」** をクリックするだけで即試せます。サインアップ不要・サーバー不要・音声データは外部送信されません。
 
 ---
 
