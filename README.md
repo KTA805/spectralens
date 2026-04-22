@@ -11,7 +11,7 @@
 
 ## Demo / デモ
 
-🔗 **[Live Demo](https://KAT805.github.io/spectralens/)**
+🔗 **[Live Demo](https://KTA805.github.io/spectralens/)**
 
 > Drop any WAV / MP3 / OGG file, or click **"Run demo with synthetic signal"** to try instantly — no sign-up, no server, no data leaves your browser.
 >
