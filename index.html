@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SpectraLens — Audio Spectrum Analyzer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap');
+  :root {
+    --bg:#0a0a0f;--surface:#111118;--surface2:#1a1a24;--border:#2a2a3a;
+    --accent:#00e5ff;--accent2:#7c4dff;--accent3:#ff4081;
+    --text:#e8e8f0;--text-dim:#6b6b88;
+    --font-mono:'Space Mono',monospace;--font-body:'DM Sans',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:var(--font-body);min-height:100vh;overflow-x:hidden;}
+  body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,229,255,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,0.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
+  .container{position:relative;z-index:1;max-width:960px;margin:0 auto;padding:40px 24px;}
+  header{display:flex;align-items:baseline;gap:16px;margin-bottom:48px;}
+  .logo{font-family:var(--font-mono);font-size:22px;font-weight:700;color:var(--accent);letter-spacing:-0.5px;}
+  .logo span{color:var(--accent3);}
+  .tagline{font-size:13px;color:var(--text-dim);font-family:var(--font-mono);}
+  .drop-zone{border:1px dashed var(--border);border-radius:12px;padding:52px 32px;text-align:center;cursor:pointer;transition:all 0.2s;background:var(--surface);position:relative;overflow:hidden;margin-bottom:32px;}
+  .drop-zone::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(0,229,255,0.06) 0%,transparent 60%);pointer-events:none;}
+  .drop-zone:hover,.drop-zone.drag-over{border-color:var(--accent);background:var(--surface2);}
+  .drop-icon{font-size:40px;margin-bottom:16px;display:block;}
+  .drop-title{font-family:var(--font-mono);font-size:15px;color:var(--text);margin-bottom:8px;}
+  .drop-sub{font-size:13px;color:var(--text-dim);}
+  .drop-sub strong{color:var(--accent);font-weight:400;cursor:pointer;}
+  #file-input{display:none;}
+  .demo-btn{display:inline-flex;align-items:center;gap:8px;margin-top:20px;padding:8px 18px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text-dim);font-family:var(--font-mono);font-size:12px;cursor:pointer;transition:all 0.2s;}
+  .demo-btn:hover{border-color:var(--accent2);color:var(--accent2);}
+  .tab-nav{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--border);}
+  .tab-btn{padding:8px 18px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--text-dim);font-family:var(--font-mono);font-size:12px;cursor:pointer;transition:all 0.2s;margin-bottom:-1px;}
+  .tab-btn:hover{color:var(--text);}
+  .tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);}
+  .tab-panel{display:none;}
+  .tab-panel.active{display:block;}
+  .stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px;opacity:0;transform:translateY(10px);transition:all 0.4s ease;}
+  .stats-row.visible{opacity:1;transform:translateY(0);}
+  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;}
+  .stat-label{font-family:var(--font-mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;}
+  .stat-value{font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--accent);}
+  .stat-unit{font-size:11px;color:var(--text-dim);margin-left:3px;}
+  .charts-section{opacity:0;transform:translateY(10px);transition:all 0.4s ease 0.1s;}
+  .charts-section.visible{opacity:1;transform:translateY(0);}
+  .charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;}
+  .chart-card.full{grid-column:1/-1;}
+  .chart-title{font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
+  .chart-title::before{content:'';display:block;width:6px;height:6px;border-radius:50%;background:var(--accent);}
+  .chart-title.mel::before{background:var(--accent2);}
+  .chart-title.delta::before{background:var(--accent3);}
+  .heatmap-canvas{width:100%;border-radius:6px;display:block;}
+  #waveform-canvas{width:100%;height:80px;border-radius:6px;background:var(--surface2);}
+  .file-info{display:none;align-items:center;gap:12px;padding:12px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-bottom:20px;font-family:var(--font-mono);font-size:12px;color:var(--text-dim);}
+  .file-info.show{display:flex;}
+  .file-name{color:var(--text);flex:1;}
+  .file-badge{padding:3px 8px;background:rgba(0,229,255,0.1);border-radius:4px;color:var(--accent);font-size:11px;}
+  .processing{display:none;align-items:center;gap:12px;padding:12px 16px;color:var(--text-dim);font-family:var(--font-mono);font-size:12px;}
+  .processing.show{display:flex;}
+  .spinner{width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .colorbar{display:flex;align-items:center;gap:8px;margin-top:8px;}
+  .colorbar-grad{flex:1;height:8px;border-radius:4px;}
+  .colorbar-label{font-family:var(--font-mono);font-size:10px;color:var(--text-dim);}
+  .coeff-labels{display:flex;justify-content:space-between;margin-top:4px;padding:0 2px;}
+  .coeff-labels span{font-family:var(--font-mono);font-size:9px;color:var(--text-dim);}
+  @media(max-width:600px){.stats-row{grid-template-columns:repeat(2,1fr);}.charts-grid{grid-template-columns:1fr;}.chart-card.full{grid-column:1;}}
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="logo">Spectra<span>Lens</span></div>
+    <div class="tagline">// browser-native audio analysis</div>
+  </header>
+
+  <div class="drop-zone" id="drop-zone">
+    <span class="drop-icon">🎙</span>
+    <div class="drop-title">Drop your audio file here</div>
+    <div class="drop-sub">WAV / MP3 / OGG &nbsp;·&nbsp; <strong onclick="document.getElementById('file-input').click()">browse files</strong></div>
+    <button class="demo-btn" onclick="loadDemo()">▶ Run demo with synthetic signal</button>
+    <input type="file" id="file-input" accept="audio/*">
+  </div>
+
+  <div class="file-info" id="file-info">
+    <span class="file-name" id="file-name">—</span>
+    <span class="file-badge" id="file-badge">—</span>
+    <span id="file-duration">—</span>
+  </div>
+  <div class="processing" id="processing"><div class="spinner"></div>Analyzing audio...</div>
+
+  <div class="stats-row" id="stats-row">
+    <div class="stat-card"><div class="stat-label">Peak Freq</div><div class="stat-value" id="stat-peak">—<span class="stat-unit">Hz</span></div></div>
+    <div class="stat-card"><div class="stat-label">RMS Level</div><div class="stat-value" id="stat-rms">—<span class="stat-unit">dB</span></div></div>
+    <div class="stat-card"><div class="stat-label">Sample Rate</div><div class="stat-value" id="stat-sr">—<span class="stat-unit">kHz</span></div></div>
+    <div class="stat-card"><div class="stat-label">Duration</div><div class="stat-value" id="stat-dur">—<span class="stat-unit">s</span></div></div>
+    <div class="stat-card"><div class="stat-label">Spectral Centroid</div><div class="stat-value" id="stat-centroid">—<span class="stat-unit">Hz</span></div></div>
+  </div>
+
+  <div class="charts-section" id="charts-section">
+    <div class="tab-nav">
+      <button class="tab-btn active" onclick="switchTab('classic',this)">Classic</button>
+      <button class="tab-btn" onclick="switchTab('mel',this)">Mel / MFCC</button>
+      <button class="tab-btn" onclick="switchTab('delta',this)">Δ Delta MFCC</button>
+    </div>
+
+    <!-- Classic -->
+    <div class="tab-panel active" id="tab-classic">
+      <div class="charts-grid">
+        <div class="chart-card full"><div class="chart-title">Waveform</div><canvas id="waveform-canvas"></canvas></div>
+        <div class="chart-card full"><div class="chart-title">FFT Spectrum</div><canvas id="fft-chart"></canvas></div>
+        <div class="chart-card"><div class="chart-title">Spectrogram</div><canvas id="spec-chart"></canvas></div>
+        <div class="chart-card"><div class="chart-title">Frequency Bands</div><canvas id="band-chart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Mel / MFCC -->
+    <div class="tab-panel" id="tab-mel">
+      <div class="charts-grid">
+        <div class="chart-card full">
+          <div class="chart-title mel">Mel Spectrogram (40 mel bins)</div>
+          <canvas class="heatmap-canvas" id="mel-canvas" height="160"></canvas>
+          <div class="colorbar">
+            <span class="colorbar-label">low dB</span>
+            <div class="colorbar-grad" style="background:linear-gradient(to right,#0a0a0f,#1a0a2e,#7c4dff,#00e5ff,#ffab00,#ff4081)"></div>
+            <span class="colorbar-label">high dB</span>
+          </div>
+          <div class="coeff-labels"><span>low freq</span><span>→ mel scale →</span><span>high freq</span></div>
+        </div>
+        <div class="chart-card full">
+          <div class="chart-title mel">MFCC Heatmap (13 coefficients × time)</div>
+          <canvas class="heatmap-canvas" id="mfcc-canvas" height="160"></canvas>
+          <div class="colorbar">
+            <span class="colorbar-label">negative</span>
+            <div class="colorbar-grad" style="background:linear-gradient(to right,#ff4081,#0a0a0f,#00e5ff)"></div>
+            <span class="colorbar-label">positive</span>
+          </div>
+          <div class="coeff-labels"><span>C1</span><span>coefficient index →</span><span>C13</span></div>
+        </div>
+        <div class="chart-card full">
+          <div class="chart-title mel">MFCC Mean Coefficients (over time)</div>
+          <canvas id="mfcc-bar-chart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delta MFCC -->
+    <div class="tab-panel" id="tab-delta">
+      <div class="charts-grid">
+        <div class="chart-card full">
+          <div class="chart-title delta">Δ Delta MFCC — 1st order (velocity)</div>
+          <canvas class="heatmap-canvas" id="delta-canvas" height="160"></canvas>
+          <div class="colorbar">
+            <span class="colorbar-label">negative</span>
+            <div class="colorbar-grad" style="background:linear-gradient(to right,#ff4081,#111118,#7c4dff)"></div>
+            <span class="colorbar-label">positive</span>
+          </div>
+        </div>
+        <div class="chart-card full">
+          <div class="chart-title delta">ΔΔ Delta-Delta MFCC — 2nd order (acceleration)</div>
+          <canvas class="heatmap-canvas" id="delta2-canvas" height="160"></canvas>
+          <div class="colorbar">
+            <span class="colorbar-label">negative</span>
+            <div class="colorbar-grad" style="background:linear-gradient(to right,#ff6d00,#111118,#00e5ff)"></div>
+            <span class="colorbar-label">positive</span>
+          </div>
+        </div>
+        <div class="chart-card full">
+          <div class="chart-title delta">Δ Delta MFCC — C1–C6 over time</div>
+          <canvas id="delta-line-chart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let fftChart=null,specChart=null,bandChart=null,mfccBarChart=null,deltaLineChart=null;
+const audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+
+const CD={
+  responsive:true,maintainAspectRatio:true,
+  animation:{duration:500,easing:'easeOutCubic'},
+  plugins:{legend:{display:false}},
+  scales:{
+    x:{ticks:{color:'#6b6b88',font:{family:'Space Mono',size:10}},grid:{color:'#1a1a24'},border:{color:'#2a2a3a'}},
+    y:{ticks:{color:'#6b6b88',font:{family:'Space Mono',size:10}},grid:{color:'#1a1a24'},border:{color:'#2a2a3a'}}
+  }
+};
+
+function switchTab(name,btn){
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  btn.classList.add('active');
+}
+
+const dz=document.getElementById('drop-zone');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag-over');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('drag-over'));
+dz.addEventListener('drop',e=>{
+  e.preventDefault();dz.classList.remove('drag-over');
+  const f=e.dataTransfer.files[0];
+  if(f&&f.type.startsWith('audio/'))processFile(f);
+});
+document.getElementById('file-input').addEventListener('change',e=>{if(e.target.files[0])processFile(e.target.files[0]);});
+
+async function processFile(file){
+  showProc(true);
+  const arr=await file.arrayBuffer();
+  try{
+    const audio=await audioCtx.decodeAudioData(arr);
+    analyze(audio.getChannelData(0),{name:file.name,size:(file.size/1024).toFixed(0)+' KB',duration:audio.duration,sampleRate:audio.sampleRate});
+  }catch(e){alert('このファイル形式はブラウザでデコードできませんでした。WAV/OGGをお試しください。');showProc(false);}
+}
+
+function loadDemo(){
+  showProc(true);
+  const sr=44100,dur=3.0,N=Math.floor(sr*dur),data=new Float32Array(N);
+  for(let i=0;i<N;i++){
+    const t=i/sr;
+    // voiced segment + unvoiced transition (to show MFCC dynamics)
+    const env=t<1.5?1.0:Math.max(0,1-(t-1.5)*2);
+    data[i]=env*(0.5*Math.sin(2*Math.PI*220*t)+0.3*Math.sin(2*Math.PI*440*t)+0.15*Math.sin(2*Math.PI*880*t))
+            +(1-env)*0.3*(Math.random()*2-1)
+            +0.02*(Math.random()*2-1);
+  }
+  analyze(data,{name:'demo_voiced+unvoiced.wav',size:'—',duration:dur,sampleRate:sr});
+}
+
+function analyze(data,info){
+  setTimeout(()=>{
+    const rms=20*Math.log10(Math.sqrt(data.reduce((s,v)=>s+v*v,0)/data.length)+1e-9);
+    const fft=computeFFT(data,info.sampleRate);
+    const peakIdx=fft.magnitudes.indexOf(Math.max(...fft.magnitudes));
+    const centroid=fft.frequencies.reduce((s,f,i)=>s+f*fft.magnitudes[i],0)/fft.magnitudes.reduce((s,v)=>s+v,0);
+
+    setStat('stat-peak',fft.frequencies[peakIdx].toFixed(0),'Hz');
+    setStat('stat-rms',rms.toFixed(1),'dB');
+    setStat('stat-sr',(info.sampleRate/1000).toFixed(1),'kHz');
+    setStat('stat-dur',info.duration.toFixed(2),'s');
+    setStat('stat-centroid',centroid.toFixed(0),'Hz');
+
+    document.getElementById('file-name').textContent=info.name;
+    document.getElementById('file-badge').textContent=info.size;
+    document.getElementById('file-duration').textContent=info.duration.toFixed(2)+'s';
+    document.getElementById('file-info').classList.add('show');
+
+    drawWaveform(data);
+    drawFFT(fft);
+    drawSpectrogram(data,info.sampleRate);
+    drawBands(fft);
+
+    const M=computeMFCC(data,info.sampleRate,13,40);
+    drawMelSpec(M.melSpec,M.nFrames,40);
+    drawHeatmap('mfcc-canvas',M.mfcc,M.nFrames,13,true,['#ff4081','#0a0a0f','#00e5ff']);
+    drawMFCCBar(M.mfcc,13);
+
+    const d1=computeDelta(M.mfcc,13,M.nFrames);
+    const d2=computeDelta(d1,13,M.nFrames);
+    drawHeatmap('delta-canvas',d1,M.nFrames,13,true,['#ff4081','#111118','#7c4dff']);
+    drawHeatmap('delta2-canvas',d2,M.nFrames,13,true,['#ff6d00','#111118','#00e5ff']);
+    drawDeltaLine(d1,13,M.nFrames);
+
+    showProc(false);
+    document.getElementById('stats-row').classList.add('visible');
+    document.getElementById('charts-section').classList.add('visible');
+  },300);
+}
+
+function setStat(id,val,unit){document.getElementById(id).innerHTML=val+`<span class="stat-unit">${unit}</span>`;}
+
+// ── FFT ──
+function computeFFT(data,sr){
+  const N=4096,win=new Float32Array(N);
+  for(let i=0;i<N;i++)win[i]=(data[i]||0)*0.5*(1-Math.cos(2*Math.PI*i/(N-1)));
+  const re=Array.from(win),im=new Array(N).fill(0);
+  fft(re,im);
+  const half=N/2,mags=[],freqs=[];
+  for(let i=1;i<half;i++){mags.push(20*Math.log10(Math.sqrt(re[i]*re[i]+im[i]*im[i])/half+1e-9)+96);freqs.push(i*sr/N);}
+  return{magnitudes:mags,frequencies:freqs};
+}
+function fft(re,im){
+  const N=re.length;if(N<=1)return;
+  const eR=re.filter((_,i)=>i%2===0),eI=im.filter((_,i)=>i%2===0);
+  const oR=re.filter((_,i)=>i%2===1),oI=im.filter((_,i)=>i%2===1);
+  fft(eR,eI);fft(oR,oI);
+  for(let k=0;k<N/2;k++){
+    const a=-2*Math.PI*k/N,c=Math.cos(a),s=Math.sin(a);
+    const tR=c*oR[k]-s*oI[k],tI=s*oR[k]+c*oI[k];
+    re[k]=eR[k]+tR;im[k]=eI[k]+tI;re[k+N/2]=eR[k]-tR;im[k+N/2]=eI[k]-tI;
+  }
+}
+
+// ── Mel / MFCC ──
+function hz2mel(h){return 2595*Math.log10(1+h/700);}
+function mel2hz(m){return 700*(Math.pow(10,m/2595)-1);}
+
+function computeMFCC(data,sr,nCoeff=13,nMel=40){
+  const fs=512,hop=256;
+  const nf=Math.floor((data.length-fs)/hop),disp=Math.min(nf,100);
+  const melMin=hz2mel(80),melMax=hz2mel(sr/2);
+  const mp=Array.from({length:nMel+2},(_,i)=>mel2hz(melMin+i*(melMax-melMin)/(nMel+1)));
+  const bp=mp.map(h=>Math.floor((fs+1)*h/sr));
+  const fb=Array.from({length:nMel},(_,m)=>{
+    const f=new Float32Array(fs/2+1);
+    for(let k=0;k<=fs/2;k++){
+      if(k>=bp[m]&&k<=bp[m+1])f[k]=(k-bp[m])/(bp[m+1]-bp[m]);
+      else if(k>bp[m+1]&&k<=bp[m+2])f[k]=(bp[m+2]-k)/(bp[m+2]-bp[m+1]);
+    }
+    return f;
+  });
+  const melSpec=[],mfccM=[];
+  for(let fi=0;fi<disp;fi++){
+    const off=Math.floor(fi*(nf/disp))*hop;
+    const re=[],im=[];
+    for(let i=0;i<fs;i++){const w=0.5*(1-Math.cos(2*Math.PI*i/(fs-1)));re.push((data[off+i]||0)*w);im.push(0);}
+    fft(re,im);
+    const pw=re.slice(0,fs/2+1).map((r,i)=>(r*r+im[i]*im[i])/fs);
+    const me=fb.map(f=>{let e=0;for(let k=0;k<f.length;k++)e+=f[k]*pw[k];return Math.log(e+1e-9);});
+    melSpec.push(me);
+    const co=[];
+    for(let c=0;c<nCoeff;c++){let s=0;for(let m=0;m<nMel;m++)s+=me[m]*Math.cos(Math.PI*c*(m+0.5)/nMel);co.push(s);}
+    mfccM.push(co);
+  }
+  return{melSpec,mfcc:mfccM,nFrames:disp};
+}
+
+function computeDelta(mat,nC,nF,N=2){
+  const d=[];let den=0;
+  for(let n=1;n<=N;n++)den+=2*n*n;
+  for(let t=0;t<nF;t++){
+    const row=new Array(nC).fill(0);
+    for(let c=0;c<nC;c++){let num=0;for(let n=1;n<=N;n++){const t1=Math.min(t+n,nF-1),t2=Math.max(t-n,0);num+=n*(mat[t1][c]-mat[t2][c]);}row[c]=num/den;}
+    d.push(row);
+  }
+  return d;
+}
+
+// ── Heatmap draw ──
+function hexRgb(h){return[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];}
+function lerp(a,b,t){return a+(b-a)*t;}
+function valColor(v,stops){
+  const s=stops.map(hexRgb),t=Math.max(0,Math.min(1,v)),seg=(s.length-1)*t,i=Math.floor(seg),f=seg-i;
+  const a=s[Math.min(i,s.length-1)],b=s[Math.min(i+1,s.length-1)];
+  return`rgb(${Math.round(lerp(a[0],b[0],f))},${Math.round(lerp(a[1],b[1],f))},${Math.round(lerp(a[2],b[2],f))})`;
+}
+
+function drawHeatmap(cid,mat,nT,nR,div,pal){
+  const cv=document.getElementById(cid),W=cv.offsetWidth||800,H=160;
+  cv.width=W*devicePixelRatio;cv.height=H*devicePixelRatio;
+  const ctx=cv.getContext('2d');ctx.scale(devicePixelRatio,devicePixelRatio);
+  ctx.fillStyle='#0a0a0f';ctx.fillRect(0,0,W,H);
+  let vmin=Infinity,vmax=-Infinity;
+  for(const r of mat)for(const v of r){if(v<vmin)vmin=v;if(v>vmax)vmax=v;}
+  const rng=Math.max(Math.abs(vmin),Math.abs(vmax))+1e-9;
+  const cw=W/nT,ch=H/nR;
+  for(let t=0;t<nT;t++)for(let r=0;r<nR;r++){
+    const v=mat[t][r],norm=div?(v/rng)*0.5+0.5:(v-vmin)/(vmax-vmin+1e-9);
+    ctx.fillStyle=valColor(norm,pal);ctx.fillRect(t*cw,(nR-1-r)*ch,cw+0.5,ch+0.5);
+  }
+}
+
+function drawMelSpec(ms,nF,nM){
+  const cv=document.getElementById('mel-canvas'),W=cv.offsetWidth||800,H=160;
+  cv.width=W*devicePixelRatio;cv.height=H*devicePixelRatio;
+  const ctx=cv.getContext('2d');ctx.scale(devicePixelRatio,devicePixelRatio);
+  ctx.fillStyle='#0a0a0f';ctx.fillRect(0,0,W,H);
+  let vmin=Infinity,vmax=-Infinity;
+  for(const r of ms)for(const v of r){if(v<vmin)vmin=v;if(v>vmax)vmax=v;}
+  const pal=['#0a0a0f','#1a0a2e','#7c4dff','#00e5ff','#ffab00','#ff4081'];
+  const cw=W/nF,ch=H/nM;
+  for(let t=0;t<nF;t++)for(let m=0;m<nM;m++){
+    const norm=(ms[t][m]-vmin)/(vmax-vmin+1e-9);
+    ctx.fillStyle=valColor(norm,pal);ctx.fillRect(t*cw,(nM-1-m)*ch,cw+0.5,ch+0.5);
+  }
+}
+
+function drawMFCCBar(mfcc,nC){
+  const means=Array.from({length:nC},(_,c)=>mfcc.reduce((s,f)=>s+f[c],0)/mfcc.length);
+  const cols=means.map(v=>v>=0?'rgba(0,229,255,0.8)':'rgba(255,64,129,0.8)');
+  if(mfccBarChart)mfccBarChart.destroy();
+  mfccBarChart=new Chart(document.getElementById('mfcc-bar-chart'),{
+    type:'bar',
+    data:{labels:Array.from({length:nC},(_,i)=>`C${i+1}`),datasets:[{data:means,backgroundColor:cols,borderColor:cols.map(c=>c.replace('0.8','1')),borderWidth:1,borderRadius:4}]},
+    options:{...CD,aspectRatio:3,scales:{x:{...CD.scales.x},y:{...CD.scales.y,title:{display:true,text:'mean value',color:'#6b6b88',font:{family:'Space Mono',size:10}}}}}
+  });
+}
+
+function drawDeltaLine(d,nC,nF){
+  const step=Math.max(1,Math.floor(nF/60)),labels=[];
+  for(let t=0;t<nF;t+=step)labels.push(t+'');
+  const cols=['#00e5ff','#7c4dff','#ff4081','#ffab00','#00bcd4','#aa00ff'];
+  const datasets=Array.from({length:Math.min(6,nC)},(_,c)=>({
+    label:`ΔC${c+1}`,data:labels.map((_,i)=>d[i*step]?.[c]??0),
+    borderColor:cols[c],backgroundColor:'transparent',borderWidth:1.5,pointRadius:0,tension:0.4
+  }));
+  if(deltaLineChart)deltaLineChart.destroy();
+  deltaLineChart=new Chart(document.getElementById('delta-line-chart'),{
+    type:'line',data:{labels,datasets},
+    options:{...CD,aspectRatio:2.5,
+      plugins:{legend:{display:true,position:'bottom',labels:{color:'#6b6b88',font:{family:'Space Mono',size:9},boxWidth:12,padding:8}}},
+      scales:{x:{...CD.scales.x,ticks:{...CD.scales.x.ticks,maxTicksLimit:8},title:{display:true,text:'frame',color:'#6b6b88',font:{family:'Space Mono',size:10}}},y:{...CD.scales.y,title:{display:true,text:'Δ value',color:'#6b6b88',font:{family:'Space Mono',size:10}}}}}
+  });
+}
+
+// ── Classic ──
+function drawWaveform(data){
+  const cv=document.getElementById('waveform-canvas'),ctx=cv.getContext('2d');
+  cv.width=cv.offsetWidth*devicePixelRatio;cv.height=80*devicePixelRatio;
+  ctx.scale(devicePixelRatio,devicePixelRatio);
+  const W=cv.offsetWidth,H=80;
+  ctx.fillStyle='#111118';ctx.fillRect(0,0,W,H);
+  const step=Math.ceil(data.length/W);
+  const g=ctx.createLinearGradient(0,0,W,0);
+  g.addColorStop(0,'#00e5ff');g.addColorStop(0.5,'#7c4dff');g.addColorStop(1,'#ff4081');
+  ctx.strokeStyle=g;ctx.lineWidth=1;ctx.beginPath();
+  for(let x=0;x<W;x++){
+    let mn=1,mx=-1;
+    for(let j=0;j<step;j++){const v=data[x*step+j]||0;if(v<mn)mn=v;if(v>mx)mx=v;}
+    const y1=(1-mx)*H/2,y2=(1-mn)*H/2;
+    if(x===0)ctx.moveTo(x,y1);else ctx.lineTo(x,y1);ctx.lineTo(x,y2);
+  }
+  ctx.stroke();
+}
+
+function drawFFT(fft){
+  const st=Math.floor(fft.frequencies.length/200),fr=[],mg=[];
+  for(let i=0;i<fft.frequencies.length;i+=st){fr.push(fft.frequencies[i].toFixed(0)+'Hz');mg.push(Math.max(0,fft.magnitudes[i]));}
+  if(fftChart)fftChart.destroy();
+  fftChart=new Chart(document.getElementById('fft-chart'),{
+    type:'line',
+    data:{labels:fr,datasets:[{data:mg,borderColor:'#00e5ff',backgroundColor:'rgba(0,229,255,0.08)',borderWidth:1.5,pointRadius:0,fill:true,tension:0.3}]},
+    options:{...CD,aspectRatio:2.5,scales:{x:{...CD.scales.x,ticks:{...CD.scales.x.ticks,maxTicksLimit:8}},y:{...CD.scales.y,min:0,title:{display:true,text:'dB',color:'#6b6b88',font:{family:'Space Mono',size:10}}}}}
+  });
+}
+
+function drawSpectrogram(data,sr){
+  const fs=256,hop=128,nf=Math.floor((data.length-fs)/hop),disp=Math.min(nf,60),frames=[];
+  for(let f=0;f<disp;f++){
+    const off=f*Math.floor(nf/disp)*hop,re=[],im=[];
+    for(let i=0;i<fs;i++){const w=0.5*(1-Math.cos(2*Math.PI*i/(fs-1)));re.push((data[off+i]||0)*w);im.push(0);}
+    fft(re,im);
+    const half=fs/2,mag=[];
+    for(let i=0;i<half;i++)mag.push(Math.max(0,20*Math.log10(Math.sqrt(re[i]*re[i]+im[i]*im[i])/half+1e-9)+96));
+    frames.push(mag);
+  }
+  const bc=8,bs=Math.floor(fs/2/bc),ds=[];
+  const cols=['#00e5ff','#00bcd4','#7c4dff','#aa00ff','#ff4081','#f50057','#ff6d00','#ffab00'];
+  const fl=['0–1k','1–2k','2–3k','3–4k','4–6k','6–8k','8–12k','12k+'];
+  for(let b=bc-1;b>=0;b--){
+    const vals=frames.map(fr=>{const s=fr.slice(b*bs,(b+1)*bs);return s.reduce((a,v)=>a+v,0)/s.length;});
+    ds.push({label:fl[b],data:vals,backgroundColor:cols[b]+'99',borderColor:cols[b],borderWidth:0,fill:true,pointRadius:0,tension:0.4});
+  }
+  if(specChart)specChart.destroy();
+  specChart=new Chart(document.getElementById('spec-chart'),{
+    type:'line',data:{labels:frames.map(()=>''),datasets:ds},
+    options:{...CD,aspectRatio:1.6,plugins:{legend:{display:true,position:'bottom',labels:{color:'#6b6b88',font:{family:'Space Mono',size:9},boxWidth:10,padding:8}}},scales:{x:{...CD.scales.x,stacked:true},y:{...CD.scales.y,stacked:true,min:0}}}
+  });
+}
+
+function drawBands(fft){
+  const bands=[{l:'Sub',mn:0,mx:80},{l:'Bass',mn:80,mx:250},{l:'Low-mid',mn:250,mx:500},{l:'Mid',mn:500,mx:2000},{l:'Hi-mid',mn:2000,mx:4000},{l:'Presence',mn:4000,mx:6000},{l:'Brilliance',mn:6000,mx:22050}];
+  const vals=bands.map(b=>{const ib=fft.magnitudes.filter((_,i)=>fft.frequencies[i]>=b.mn&&fft.frequencies[i]<b.mx);return ib.length?Math.max(0,ib.reduce((a,v)=>a+v,0)/ib.length):0;});
+  const mx=Math.max(...vals);
+  const cols=vals.map(v=>{const r=v/(mx+1e-9);return r>0.8?'#ff4081':r>0.5?'#7c4dff':'#00e5ff';});
+  if(bandChart)bandChart.destroy();
+  bandChart=new Chart(document.getElementById('band-chart'),{
+    type:'bar',
+    data:{labels:bands.map(b=>b.l),datasets:[{data:vals,backgroundColor:cols.map(c=>c+'cc'),borderColor:cols,borderWidth:1,borderRadius:4}]},
+    options:{...CD,aspectRatio:1.6,scales:{x:{...CD.scales.x},y:{...CD.scales.y,min:0,title:{display:true,text:'avg dB',color:'#6b6b88',font:{family:'Space Mono',size:10}}}}}
+  });
+}
+
+function showProc(s){document.getElementById('processing').classList.toggle('show',s);}
+</script>
+</body>
+</html>
